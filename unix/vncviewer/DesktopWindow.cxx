@@ -27,6 +27,7 @@
 #include <X11/Xatom.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 #include "parameters.h"
 
 #ifndef XK_ISO_Left_Tab
@@ -569,3 +570,151 @@ void DesktopWindow::selectionNotify(XSelectionEvent* ev, Atom type, int format,
     }
   }
 }
+
+void DesktopWindow::parseChar(char* s, KeySym* ks, int* shift)
+{
+    *ks = XStringToKeysym(s);
+    if(strlen(s) != 1)
+        return;
+    if (*s >= 'A' && *s <= 'Z')
+        *shift = 1;
+    switch (*s) {
+    case 9    : *ks=XK_Tab; break;
+    case 10   : *ks=XK_Return; break;
+    case ' '  : *ks=XK_space; break;
+    case '!'  : *ks=XK_exclam; *shift=1; break;
+    case '"'  : *ks=XK_quotedbl; *shift=1; break;
+    case '#'  : *ks=XK_numbersign; *shift=1; break;
+    case '$'  : *ks=XK_dollar; *shift=1; break;
+    case '%'  : *ks=XK_percent; *shift=1; break;
+    case '&'  : *ks=XK_ampersand; *shift=1; break;
+    case '('  : *ks=XK_parenleft; *shift=1; break;
+    case ')'  : *ks=XK_parenright; *shift=1; break;
+    case '*'  : *ks=XK_asterisk; *shift=1; break;
+    case '='  : *ks=XK_equal; break;
+    case '+'  : *ks=XK_plus; *shift=1; break;
+    case '-'  : *ks=XK_minus; break;
+    case '_'  : *ks=XK_underscore; *shift=1; break;
+    case '.'  : *ks=XK_period; break;
+    case ','  : *ks=XK_comma; break;
+    case ':'  : *ks=XK_colon; *shift=1; break;
+    case ';'  : *ks=XK_semicolon; break;
+    case '<'  : *ks=XK_less; *shift=1; break;
+    case '>'  : *ks=XK_greater; *shift=1; break;
+    case '?'  : *ks=XK_question; *shift=1; break;
+    case '@'  : *ks=XK_at; *shift=1; break;
+    case '/'  : *ks=XK_slash; break;
+    case '['  : *ks=XK_bracketleft; break;
+    case ']'  : *ks=XK_bracketright; break;
+    case '`'  : *ks=XK_grave; break;
+    case '{'  : *ks=XK_braceleft; *shift=1; break;
+    case '}'  : *ks=XK_braceright; *shift=1; break;
+    case '~'  : *ks=XK_asciitilde; *shift=1; break;
+    case '|'  : *ks=XK_bar; *shift=1; break;
+    case '\'' : *ks=XK_apostrophe; break;
+    case '\\' : *ks=XK_backslash; break;
+    }
+}
+
+void DesktopWindow::sendString(char* text)
+{
+    /* Based on https://sites.google.com/site/dannychouinard/Home/unix-linux-trinkets/little-utilities/xkeyin-send-x11-keyboard-events-to-an-x-window */
+    KeySym ks;
+    int alt, currentalt = 0;
+    int shift, currentshift = 0;
+    unsigned int b, c;
+    char s[80];
+    char *start, *end, *pos;
+
+    fprintf(stderr, "SENDING FAKE EVENTS\n");
+
+    for (b=0; b<strlen(text); b++) {
+        alt = 0;
+        shift = 0;
+        s[0] = text[b];
+        s[1] = 0;
+        fprintf(stderr, "@%c (%d)\n", text[b], text[b]);
+        parseChar(s, &ks, &shift);
+        if (text[b] == '^') {
+            b++;
+            switch (text[b]) {
+            case 'm' : ks=XK_Return; break;
+            case 't' : ks=XK_Tab; break;
+            case '?' : ks=XK_Delete; break;
+            case 'h' : ks=XK_BackSpace; break;
+            case 'D' : ks=XK_Down; break;
+            case 'U' : ks=XK_Up; break;
+            case '^' : ks=XK_asciicircum; shift=1; break;
+            case '{' :
+                /* Examples:
+                   ^{Home}
+                   ^{S-Home}
+                */
+                b++;
+                start = text+b;
+                end = strchr(start, '}');        
+                b = b + (end-start);
+                while ((pos = strchr(start, '-')) && pos < end) {
+                    start = pos+1;
+                    pos--;
+                    if (*pos == 'A')
+                        alt = 1;
+                    if (*pos == 'S')
+                        shift = 1;
+                } 
+                if (end) {
+                    c = end-start;
+                    strncpy(s, start, c);
+                    s[c] = '\0';
+                    fprintf(stderr, "KEY LOOKUP '%s'\n", s);
+                    parseChar(s, &ks, &shift);
+                }
+                break;
+            }
+        }
+        if (ks == NoSymbol) {
+            fprintf(stderr, "KEY LOOKUP FAILED\n");
+            continue;
+        }
+        fprintf(stderr, "ALT=%d SHIFT=%d\n", alt, shift);
+        if (currentalt != alt) {
+            if (alt) {
+                fprintf(stderr, "PRESSING ALT\n");
+                cc->writer()->keyEvent(XK_Alt_L, true);
+            } else {
+                fprintf(stderr, "RELEASING ALT\n");
+                cc->writer()->keyEvent(XK_Alt_L, false);
+            }
+            usleep(5000);
+            currentalt = alt;
+        }
+        if (currentshift != shift) {
+            if (shift) {
+                fprintf(stderr, "PRESSING SHIFT\n");
+                cc->writer()->keyEvent(XK_Shift_L, true);
+            } else {
+                fprintf(stderr, "RELEASING SHIFT\n");
+                cc->writer()->keyEvent(XK_Shift_L, false);
+            }
+            usleep(5000);
+            currentshift = shift;
+        }
+        fprintf(stderr, "PRESSING KEYSYM %d\n", (int) ks);
+        cc->writer()->keyEvent(ks, true);
+        usleep(5000);
+        fprintf(stderr, "RELEASING KEYSYM %d\n", (int) ks);
+        cc->writer()->keyEvent(ks, false);
+        usleep(5000);
+    }
+    if (currentalt) {
+        fprintf(stderr, "RELEASING ALT\n");
+        cc->writer()->keyEvent(XK_Alt_L, false);
+    }
+    if (currentshift) {
+        fprintf(stderr, "RELEASING SHIFT\n");
+        cc->writer()->keyEvent(XK_Alt_L, false);
+    }
+  
+    fprintf(stderr, "\n");
+}
+

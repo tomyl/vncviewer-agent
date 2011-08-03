@@ -37,6 +37,7 @@
 #include "TXWindow.h"
 #include "TXMsgBox.h"
 #include "CConn.h"
+#include "Agent.h"
 
 #include "gettext.h"
 #define _(String) gettext (String)
@@ -122,6 +123,8 @@ IntParameter qualityLevel("QualityLevel",
 			  "JPEG quality level. "
 			  "0 = Low, 9 = High",
 			  6);
+
+StringParameter agent("agent", "Agent script", "");
 
 char aboutText[1024];
 char* programName;
@@ -383,6 +386,11 @@ int main(int argc, char** argv)
 
     TXWindow::init(dpy, "Vncviewer");
     xloginIconifier.iconify(dpy);
+
+    CharArray agentStr(agent.getData());
+    if (agentStr.buf[0])
+        agent_init(agentStr.buf);
+
     CConn cc(dpy, argc, argv, sock, vncServerName, listenMode);
 
     // X events are processed whenever reading from the socket would block.

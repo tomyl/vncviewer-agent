@@ -1,0 +1,10 @@
+#!/usr/local/bin/xexpect
+
+interval 3
+
+expect tomat
+stdout send gurka
+
+expect gurka
+stdout exit
+

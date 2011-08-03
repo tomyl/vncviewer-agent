@@ -1,0 +1,214 @@
+#!/usr/bin/perl
+
+# xexpect screen scrapes X11 windows and performes actions if matching text
+# patterns are found. xexpect is intended to be run as an rdesktop agent (option -G).
+#
+# Usage: xexpect <file>
+#
+# The xexpect file format is described below.
+#
+# Global commands:
+#
+#   interval <seconds>
+#     Poll  interval, how often to screen scrape the window.
+#
+#   defmacro <name> <cmdline>
+#     Defined a macro.
+#
+#   expect <regexp>
+#     Starts an expect block. If any text matches the regexp pattern, the
+#     commands in the block are executed.
+#
+#  Commands in expect blocks:
+#
+#    macro <name>
+#      Invokes macro.
+#
+#    stdout <text>
+#      Outputs text on stdout.
+#    
+#
+# xexpect talks the following protocol on stdin/stdout.
+#
+# Commands accepted on stdin:
+#
+#   init
+#     Just a greeting sent by rdesktop in agent mode.
+#
+#   window <id>
+#     The window id (e.g. 0x5000095) to screen scrape.
+#
+# Commands sent to stdout:
+#
+#   exit
+#     rdesktop should exit.
+#
+#   send <string>
+#     Send string as fake key press events to the window. The string may
+#     contain the following special characters:
+#       ^m - return
+#       ^t - tab
+#       ^? - delete
+#       ^h - backspace
+#       ^^ - literal ^
+#       ^{symbol} - X11 key symbol, e.g. ^{Down} for down arrow
+#       ^{A-symbol} - same as above but with alt key, e.g. ^{A-o} sends Alt+o
+
+use strict;
+use warnings;
+
+use Data::Dumper;
+use File::Temp qw/tempfile/;
+use File::Slurp qw/read_file/;
+use IO::Select;
+
+my $display = $ENV{'DISPLAY'};
+#my $wid = $ENV{'WINDOWID'};
+my $wid;
+
+sub capture {
+    if (!$wid) {
+        print STDERR "Please set environment variable DISPLAY\n";
+        return;
+    }
+
+    if (!$wid) {
+        #print STDERR "Please set environment variable WINDOWID\n";
+        print STDERR "Have not received windowid param yet\n";
+        return;
+    }
+
+    my ($fh1, $jpg) = tempfile(SUFFIX => '.jpg', UNLINK => 1);
+    my ($fh2, $pnm) = tempfile(SUFFIX => '.pnm', UNLINK => 1);
+    my ($fh3, $txt) = tempfile(SUFFIX => '.txt', UNLINK => 1);
+
+    print STDERR "Capturing $wid at $display\n";
+
+    `import -window $wid $jpg`;
+
+    if ($?) {
+        print STDERR "import(1) failed\n";
+        exit 1;
+    }
+
+    `convert $jpg $pnm`;
+
+    if ($?) {
+        print STDERR "convert(1) failed\n";
+        exit 1;
+    }
+
+    `gocr -i $pnm > $txt`;
+
+    if ($?) {
+        print STDERR "gocr(1) failed\n";
+        exit 1;
+    }
+
+    my $output = read_file($txt);
+    print STDERR "OUTPUT: $output\n";
+
+    return $output;
+}
+
+my $toexpect;
+my %actions;
+my %macros;
+my $interval = 5;
+
+my $path = $ARGV[0];
+open(FH, $path) or die "failed to open $path: $!";
+
+while (my $line = <FH>) {
+    next if $line =~ /\s*#/;
+    next if $line =~ /^\s*$/;
+    chomp $line;
+
+    if ($line =~ /^\s*expect (.*)/) {
+        $toexpect = $1;
+        next;
+    }
+
+    if ($toexpect) {
+        if ($line =~ /^\s*(stdout|macro|interval)\s+(.*)/) {
+            push @{$actions{$toexpect}}, [$1, $2];
+            next;
+        }
+    } else {
+        if ($line =~ /^\s*interval\s+(.*)/) {
+            $interval = $1;
+            next;
+        }
+        if ($line =~ /^\s*defmacro\s+(.*?)\s+(.*)/) {
+            $macros{$1} = $2;
+            next;
+        }
+    }
+
+    print STDERR "Failed to parse '$line'\n";
+}
+
+close(FH);
+
+print STDERR "Actions: " . Dumper(\%actions);
+print STDERR "Macros: " . Dumper(\%macros);
+
+my $sel = IO::Select->new();
+$sel->add(\*STDIN);
+$| = 1;
+
+while (1) {
+    my $start = time();
+
+    while ($sel->can_read($interval)) {
+        my @lines = <STDIN>;
+        if (!@lines) {
+            print STDERR "EOF, EXITING\n";
+            exit(0);
+        }
+        for my $line (@lines) {
+            chomp $line;
+            print STDERR "From rdesktop: $line\n";
+
+            if ($line =~ /^window (.*)$/) {
+                $wid = $1;
+                print STDERR "Will capture from window $wid\n";
+            }
+        }
+    }
+
+    next unless $wid;
+    my $left = $interval - (time() - $start);
+    sleep $left if $left > 0;
+
+    my $output = capture();
+    next unless $output;
+    for my $s (sort keys %actions) {
+        print STDERR "TRYING $s\n";
+        if ($output =~ /$s/) {
+            my @acts = @{$actions{$s}};
+            print STDERR "ACTIONS " . Dumper(\@acts);
+            while (my $a = shift @acts) {
+                print STDERR "ACTION @$a\n";
+                my ($cmd, $arg) = @$a;
+                if ($cmd eq 'macro') {
+                    my $cmdline = $macros{$arg};
+                    if ($cmdline) {
+                        print STDERR "MACRO $arg\n";
+                        unshift @acts, [split(/\s+/, $cmdline, 2)];
+                    } else {
+                        print STDERR "UNKNOWN MACRO '$arg'\n";
+                    }
+                }
+                if ($cmd eq 'interval') {
+                    $interval = $1;
+                }
+                if ($cmd eq 'stdout') {
+                    print STDERR "WRITING TO STDOUT: $arg\n";
+                    print $arg . "\n";
+                }
+            }
+        }
+    }
+}
+

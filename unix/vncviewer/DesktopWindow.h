@@ -83,6 +83,7 @@ public:
     showLocalCursor();
   }
   void invertRect(const rfb::Rect& r);
+  void sendString(char* text);
 
   // TXWindow methods
   virtual void resize(int w, int h);
@@ -99,6 +100,7 @@ private:
   void showLocalCursor();
   bool handleTimeout(rfb::Timer* timer);
   void handlePointerEvent(const rfb::Point& pos, int buttonMask);
+  void parseChar(char* s, KeySym* ks, int* shift);
 
   CConn* cc;
   TXImage* im;

@@ -3,10 +3,10 @@ bin_PROGRAMS = vncviewer
 man1_MANS = vncviewer.man
 
 HDRS = AboutDialog.h CConn.h DesktopWindow.h gettext.h InfoDialog.h \
-	OptionsDialog.h parameters.h PasswdDialog.h ServerDialog.h
+	OptionsDialog.h parameters.h PasswdDialog.h ServerDialog.h Agent.h
 
 vncviewer_SOURCES = $(HDRS) DesktopWindow.cxx CConn.cxx vncviewer.cxx \
-	buildtime.c
+	Agent.cxx buildtime.c 
 
 vncviewer_CPPFLAGS = -I$(COMMON_DIR) -I$(top_srcdir) -I$(top_srcdir)/tx \
 	-I$(top_srcdir)/intl -DLOCALEDIR=\"$(localedir)\" @X_CFLAGS@ # X_CFLAGS are really CPPFLAGS

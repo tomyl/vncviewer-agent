@@ -37,6 +37,7 @@
 #include "ServerDialog.h"
 #include "PasswdDialog.h"
 #include "parameters.h"
+#include "Agent.h"
 
 using namespace rfb;
 
@@ -187,8 +188,10 @@ void CConn::blockCallback() {
     FD_ZERO(&rfds);
     FD_SET(ConnectionNumber(dpy), &rfds);
     FD_SET(sock->getFd(), &rfds);
+    agent_add_fds(&rfds);
     int n = select(FD_SETSIZE, &rfds, 0, 0, tvp);
     if (n < 0) throw rdr::SystemException("select",errno);
+    agent_process(&rfds, desktop);
   } while (!(FD_ISSET(sock->getFd(), &rfds)));
 }
 
@@ -260,6 +263,7 @@ void CConn::serverInit() {
   recreateViewport();
   formatChange = encodingChange = true;
   requestNewUpdate();
+  agent_send("window %p\n", desktop->win());
 }
 
 // setDesktopSize() is called when the desktop size changes (including when

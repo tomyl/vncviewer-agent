@@ -41,6 +41,7 @@ extern rfb::BoolParameter customCompressLevel;
 extern rfb::IntParameter compressLevel;
 extern rfb::BoolParameter noJpeg;
 extern rfb::IntParameter qualityLevel;
+extern rfb::StringParameter agent;
 
 extern char aboutText[];
 extern char* programName;
