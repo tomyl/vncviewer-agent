@@ -2,6 +2,7 @@
 
 # xexpect screen scrapes X11 windows and performes actions if matching text
 # patterns are found. xexpect is intended to be run as an rdesktop agent (option -G).
+# or vncviewer agent (option Agent=...).
 #
 # Usage: xexpect <file>
 #

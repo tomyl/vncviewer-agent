@@ -1,0 +1,19 @@
+This is a fork of 
+
+  https://vnc-tight.svn.sourceforge.net/svnroot/vnc-tight/trunk
+
+which makes it possible to control vncviewer using an agent script. The purpose
+of this hack was to automate OS installations. I have done the same hack for
+rdesktop, see
+
+  https://github.com/tomyl/rdesktop-agent
+  http://permalink.gmane.org/gmane.network.rdesktop.user/2687
+
+The agent script is invoked like this:
+
+  vncviewer Agent=./test.xexpect host
+
+An example script is here: unix/vncviewer/test.xexpect
+
+My agent scripts use unix/vncviewer/xexpect as interpreter. The agent protocol
+that vncviewer uses is documented in this script.
